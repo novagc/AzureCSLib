@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-### VER 2.1 ###
+### VER 2.1.1 ###
 
 ### <file-like object> ###
 class FrameFileObject:   
@@ -207,35 +207,30 @@ class FaceAPIsession():
         except:
             pass
 
-    def CreatePerson(self, name, video, data = None):
+    def CreatePerson(self, video = None, name = None, data = None):
         self.OpenConnection()
-        frames = self.GetFrames(video)
-        self.CheckFaces(frames)
-        try:
-            self.GetPersonID(name)
-            raise PersonExistError('Person {0} already exist'.format(name))
-        except:
-            pass
-        cf.person.create(self.group, name, )
-        personID = self.GetPersonID(name)
-        facesID, count = self.UploadFaces(personID, frames)
-
-        return personID, facesID, count
-
-    def CreateAnonPerson(self, video, data = None):
-        self.OpenConnection()
-        frames = self.GetFrames(video)
-        self.CheckFaces(frames)
+        if video != None:
+            frames = self.GetFrames(video)
+            self.CheckFaces(frames)
         self.CreateGroup()
-        try:
-            number = str(max([int(x['name']) for x in cf.person.lists(self.group) if x['name'].isdigit()]) + 1)
-        except:
-            number = '0'
-        cf.person.create(self.group, number, data)
-        personID = self.GetPersonID(number)
-        facesID, count = self.UploadFaces(personID, frames)
-
-        return personID, facesID, count
+        if name != None:
+            try:
+                self.GetPersonID(name)
+                raise PersonExistError('Person {0} already exist'.format(name))
+            except:
+                pass
+        else:
+            try:
+                name = str(max([int(x['name']) for x in cf.person.lists(self.group) if x['name'].isdigit()]) + 1)
+            except:
+                name = '0'
+        cf.person.create(self.group, name)
+        personID = self.GetPersonID(name)
+        if video != None:
+            facesID, count = self.UploadFaces(personID, frames)
+            return personID, facesID, count
+        else:
+            return personID
 
     def UploadFaces(self, personID, frames, check=True):
         self.OpenConnection()
@@ -243,7 +238,7 @@ class FaceAPIsession():
             self.CheckFaces(frames)
         facesID = []
         for frame in frames:
-            facesID.append(cf.person.add_face(frame, self.group, personID))
+            facesID.append(cf.person.add_face(frame, self.group, personID)['persistedFaceId'])
 
         return facesID, len(facesID)
 
@@ -275,7 +270,7 @@ class FaceAPIsession():
 
         return personCount
 
-    def IdentifyPerson(self, video, minDegree = 0.499999999999999):
+    def IdentifyPerson(self, video=None, frames=None, minDegree = 0.5):
         self.OpenConnection()
         try:
             status = cf.person_group.get_status(self.group)['status']
@@ -284,8 +279,9 @@ class FaceAPIsession():
 
         if status != 'succeeded':
             raise SystemReadinessError()
-
-        IDs = self.GetIDs(self.GetFrames(video))
+        if video == None and frames == None:
+            raise EmptyArgumentsError('video;frames')
+        IDs = self.GetIDs(self.GetFrames(video) if video != None else frames)
         personID = ''
         for x in cf.face.identify(IDs, self.group, threshold=0.5):
             if len(x['candidates']) == 0:

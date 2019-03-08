@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-### VER 2.1.1 ###
+### VER 2.2 ###
 
 ### <file-like object> ###
 class FrameFileObject:   
@@ -43,7 +43,15 @@ class InvalidArgumentError(Exception):
     def __init__(self, message = ''):
         self.message = message
 
-class ArgumentFormatErro(Exception):
+class ArgumentFormatError(Exception):
+    def __init__(self, message = ''):
+        self.message = message
+
+class PersonGroupExistError(Exception):
+    def __init__(self, message = ''):
+        self.message = message
+
+class PersonGroupTrainingError(Exception):
     def __init__(self, message = ''):
         self.message = message
 ### </Сustom errors> ###
@@ -152,6 +160,9 @@ class FaceAPIsession():
 
         return count, allFramesHaveFace
 
+    def CountPersons(self):
+        return len(cf.person.lists(self.group))
+
     def CheckFaces(self, frames):
         self.OpenConnection()
         frames = [x for x in frames if self.CheckFace(x)]
@@ -171,6 +182,14 @@ class FaceAPIsession():
             return True
         else:
             return False
+
+    def CheckGroupExist(self):
+        self.OpenConnection()
+        try:
+            cf.person_group.get(self.group)
+        except cf.CognitiveFaceException as cfe:
+            if cfe.code == 'PersonGroupNotFound':
+                raise PersonGroupExistError('The group does not exist')
 
     def AddPersonData(self, id, phone):
         self.OpenConnection()
@@ -197,6 +216,15 @@ class FaceAPIsession():
     def UpdatePersonData(self, personID, data=''):
         self.OpenConnection()
         cf.person.update(self.group, personID, user_data=data)
+
+    def CheckGroupTraining(self):
+        try:
+            return True if cf.person_group.get_status(self.group)['status'] == 'success' else False
+        except cf.CognitiveFaceException as cfe:
+            if cfe.code == 'PersonGroupNotTrained':
+                raise PersonGroupTrainingError()
+            else:
+                raise cf.CognitiveFaceException(cfe.status_code, cfe.code, cfe.msg)
 ### </Auxiliary functions> ###
 
 ### <Main functions> ###
@@ -207,11 +235,12 @@ class FaceAPIsession():
         except:
             pass
 
-    def CreatePerson(self, video = None, name = None, data = None):
+    def CreatePerson(self, video = None, frames = None, name = None, data = None):
         self.OpenConnection()
-        if video != None:
-            frames = self.GetFrames(video)
+        if video != None or frames != None:
+            frames = self.GetFrames(video) if frames == None else frames
             self.CheckFaces(frames)
+            video = ''
         self.CreateGroup()
         if name != None:
             try:
@@ -226,7 +255,7 @@ class FaceAPIsession():
                 name = '0'
         cf.person.create(self.group, name)
         personID = self.GetPersonID(name)
-        if video != None:
+        if video != None :
             facesID, count = self.UploadFaces(personID, frames)
             return personID, facesID, count
         else:
@@ -256,6 +285,7 @@ class FaceAPIsession():
         if personID == None and personName == None:
             raise EmptyArgumentsError('personID;personName')
         if personID != None:
+            self.GetPersonName(personID)
             cf.person.delete(self.group, personID)
         else:
             personID = self.GetPersonID(personName)
@@ -295,6 +325,7 @@ class FaceAPIsession():
 
     def GetPersonList(self):
         self.OpenConnection()
+        
         return [x['personId'] for x in cf.person.lists(self.group)]
 
     def UpdateGroupData(self, data):
@@ -306,4 +337,10 @@ class FaceAPIsession():
     def GetGroupData(self):
         self.OpenConnection()
         return cf.person_group.get(self.group)['userData'] 
+
+    def DeleteGroup(self):
+        self.OpenConnection()
+        self.CheckGroupExist()
+        cf.person_group.delete(self.group)
+        return True  
 ### </Main functions> ###
